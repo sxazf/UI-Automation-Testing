@@ -1,0 +1,364 @@
+#!
+require "yaml"
+require "pathname"
+require "fileutils"
+require "HandleTestData.rb"
+require "Report.rb"
+
+class RunTime
+  
+  def initialize
+    (puts "Please type arguments!!!" ; exit) if $*.size==0
+    @root_path = Pathname.new(File.join(Dir.pwd)).realpath
+    @test_case_path = Pathname.new(File.join(@root_path,"testcase")).realpath if File.exists? File.join(@root_path,"testcase")
+    @report_path = Pathname.new(File.join(@root_path,"report")).realpath if File.exists? File.join(@root_path,"report")
+    @template_path = Pathname.new(File.join(@root_path,"template")).realpath if File.exists? File.join(@root_path,"template")
+  end
+  
+  def get_help
+    if $*.size==1 and $*[0] =~ /^((\-h)|(\-help))$/i 
+      puts "[-h] or [-help] check all the commands"
+      puts "[-cw *name] create workspace"
+      puts "[-cp *name] create project"
+      puts "[list] check all the project in testcase folder"
+      puts "[all] run the all project in testcase folder"
+      puts "[all -y] or [all -yaml] run the all project which are configured in run.yaml file"
+      puts "[projectname] run the project which is named \"projectname\""
+      puts "[projectname testcasename] run the testcase which is named \"testcasename\" in project \"projectname\""
+      puts "[projectname testcasename no.] run the testcase which is named \"testcasename\" and the number is \"no.\" in the TestData.yaml in project \"projectname\""
+      exit
+    end
+  end
+  
+  def create_workspace
+    if $*.size==2 and $*[0] =~ /^(-cw)$/i 
+      (puts "Workspace name error";exit) unless $*[1] =~ /^(\w+)$/
+      source_path = File.join(File.dirname(__FILE__),"project")
+      create_workspace_path = File.join(@root_path,$*[1]) 
+      (puts "Workspace #{create_workspace_path} is exist!";exit) if File.exists?(create_workspace_path)
+      FileUtils.cp_r(source_path,create_workspace_path)
+      puts "Workspace #{$*[1]} can be used now";exit
+    end    
+  end
+  
+  def create_project
+    if $*.size==2 and $*[0] =~ /^(-cp)$/i 
+      (puts "Please create workspace!";exit) if @test_case_path==nil
+      (puts "Project name error";exit) unless $*[1] =~ /^[a-zA-Z]/ and $*[1] =~ /^(\w+)$/
+      create_project_path = File.join(@test_case_path,$*[1])     
+      project_name = $*[1].capitalize
+      (puts "Project #{create_project_path} is exist!";exit) if File.exists?(create_project_path)
+      generate_project_folder project_name
+      generate_test_data_file project_name
+      generate_expected_data_file project_name
+      generate_UI_object_file project_name
+      generate_config_file project_name
+      generate_test_case_file project_name
+      puts "#{project_name} can be used now!";exit 
+    end
+  end
+  
+  #generate the project folder
+  def generate_project_folder(project)
+    Dir.mkdir(File.join(@test_case_path , "/#{project}"))
+  end
+  
+  #generate the test data yaml file
+  def generate_test_data_file(project)
+    unless File.exists?(File.join(@template_path,"TestData.yaml"))
+      test_data = [{"common"=>{"private"=>"y", "smoking"=>"y", "description"=>""}}, {"test_a_1"=>{"description"=>"test for 123", "inputValue"=>123}}]
+      File.open(File.join(@template_path,"TestData.yaml"), 'w'){|f| YAML.dump(test_data, f)}
+    end
+    File.copy_stream File.join(@template_path,"TestData.yaml"), File.join(@test_case_path , "/#{project}","/TestData.yaml")
+  end
+  
+  #generate the expected data yaml file
+  def generate_expected_data_file(project)
+    unless File.exists?(File.join(@template_path,"ExpectedData.yaml"))
+      expected_data = {"hello"=>123, "world"=>234}
+      File.open(File.join(@template_path,"ExpectedData.yaml"), 'w'){|f| YAML.dump(expected_data, f)}
+    end
+    File.copy_stream File.join(@template_path,"ExpectedData.yaml"), File.join(@test_case_path , "/#{project}","/ExpectedData.yaml")
+  end
+  
+  #generate the UI Object yaml file
+  def generate_UI_object_file(project)
+    unless File.exists?(File.join(@template_path,"temp.yaml"))
+      arr = ["type","name","class","index","type","parent"]
+      h = Hash.new
+      arr.each{|key|
+        h[key]="x"
+      }
+      hash = Hash.new
+      hash["elementName"] = h
+      hash["elementOtherName"] = "div(:id,\"123\")"
+      File.open(File.join(@template_path,"temp.yaml"), 'w'){|f| YAML.dump(hash, f)}
+    end
+    File.copy_stream File.join(@template_path,"temp.yaml"), File.join(@test_case_path , "/#{project}","/#{project}.yaml")
+  end
+  
+  #generate the config yaml file
+  def generate_config_file(project)
+    unless File.exists?(File.join(@template_path,"conf.yaml"))  
+      File.new(File.join(@template_path,"conf.yaml"), 'w')
+    end
+    File.copy_stream File.join(@template_path,"conf.yaml"), File.join(@test_case_path , "/#{project}","/conf.yaml")
+  end
+  
+  #define the test case rb file format
+  def getRbStr(project)
+    return tempRbStr = %{require "TestClass.rb"
+    
+  class #{project} < TestKlass
+   
+    def setUp    
+      #getWebApplication
+    end
+    
+    def tearDown    
+      #\@b.close
+    end 
+    
+    def test_#{project}
+      #AutoTest("")
+      #LoadObject("")
+      #TestData("")
+      #ExpectData("")
+      #LoadTestData("")
+      #LoadExpectData("")
+      #TransferData("")
+      #ConfigData("")
+      #assert_string("","","")
+      #assert_array("","","")
+      #assert_hash("","","")
+      #assert_true(true,"")
+      #assert_false(false,"")    
+      #l ""
+    end
+    
+  end  
+  }
+  end
+  
+  #generate the test case rb file
+  def generate_test_case_file(project)
+    unless File.exists?(File.join(@template_path,"temp.rb")) 
+      tempRbStr = getRbStr("Temp")
+      File.open(File.join(@template_path,"temp.rb"),"w"){|f| f.puts(tempRbStr)}
+    end
+    File.copy_stream File.join(@template_path,"temp.rb"), File.join(@test_case_path , "/#{project}","/#{project}.rb")
+    File.open(File.join(@test_case_path , "/#{project}","/#{project}.rb"),"r") do |lines|
+      buffer = lines.read.gsub(/Temp/i,project)
+      File.open(File.join(@test_case_path , "/#{project}","/#{project}.rb"),"w"){|all| all.write(buffer)}
+    end
+  end
+  
+  #list the test case file
+  def get_file_list(path) 
+    project_list = Array.new
+    @all_project=Array.new
+    Dir.entries(path).each do |sub|         
+      if sub != '.' && sub != '..'  
+        if File.directory?("#{path}/#{sub}")  
+          project_hash = Hash.new        
+          if File.exists?("#{path}/#{sub}/TestData.yaml")
+            test_data = HandleTestData.new("#{path}/GlobalData.yaml","#{path}/#{sub}/TestData.yaml","#{path}/#{sub}/ExpectedData.yaml").load_test_data
+            project_hash[sub] = test_data
+            @all_project<<sub
+          end
+          project_list<<project_hash if project_hash.size>0
+        end  
+      end  
+    end  
+    project_list 
+  end 
+  
+  def project_list
+    if  $*.size==1 and $*[0] =~ /^(list)$/i
+      (puts "Please create workspace!";exit) if @test_case_path==nil
+      puts "|project|No.|test case|description|"
+      all_project = get_file_list(@test_case_path)
+      all_project.each{|project|
+        project.each{|k,v|      
+          v.each{|key,value|
+            puts "|#{k}|#{key.to_s}|#{value["TestCase Order"]}|#{value["description"]}|"        
+          }
+        }
+      }
+      exit
+    end
+  end
+    
+  def arguments_check
+    #@info[0] is the project
+    #@info[1] is the test case
+    #@info[2] is the number
+    @info = Array.new
+    $*.each{|k|
+     @info<<k.to_s
+    }
+    (puts "At most 3 arguments" ; exit) if @info.size>3
+    (puts "No.3 argment incorrect, must be number." ; exit) if @info.size==3 and @info[2] !=~ /^(\d+)$/
+  end
+  
+  def execute_test_case
+    (puts "Please create workspace!";exit) if @test_case_path==nil
+    all_project = get_file_list(@test_case_path)
+    all_project.each{|project_|
+      @flag = false
+      project_.each{|k,v|
+        v.each{|key,value|
+          temp = [k,value["TestCase Order"],key.to_s]     
+          if (@info-temp).size==0
+            @flag = true
+            break
+          end
+        }
+        break if @flag
+      }
+      break if @flag
+    }
+    (puts "Please check the arguments!!!" ; exit) if !@flag
+    if @info.size==1 
+      args = "all"
+    else
+      temp_info = @info.clone
+      temp_info.delete(temp_info[0])
+      args = temp_info.join(" ")
+    end
+    test_case_path = @test_case_path.to_s.gsub("/","\\")
+    command = "cd /d \"#{test_case_path}\\#{@info[0]}\" & ruby #{@info[0]}.rb #{args}"
+    system command
+    exit
+  end
+  
+  def execute_all    
+    if $*.size==1 and $*[0] =~ /^(all)$/i
+      (puts "Please create workspace!";exit) if @test_case_path==nil
+      args = "all"
+      get_file_list(@test_case_path) 
+      delete_report_yaml_file
+      delete_total_report_file
+      @all_project.each{|project|
+        test_case_path = @test_case_path.to_s.gsub("/","\\")
+        command = "cd /d \"#{test_case_path}\\#{project}\" & ruby #{project}.rb #{args}"
+        system command
+      } 
+      @collect_yaml_hash = Hash.new
+      @collect_rerun_yaml_hash = Hash.new
+      collect_report_yaml_file{|temp_count,project|
+        @collect_yaml_hash[(temp_count+1).to_s]={
+        :project=>project,
+        :testclass=>"",
+        :testcase=>"",
+        :description=>"", 
+        :status=>"N/A",
+        :errMes=>"No case need to run"
+        }
+      }
+      @collect_yaml_hash.update @collect_rerun_yaml_hash    
+      Report.new.putsReportFile("#{@report_path}/report.html","#{@report_path}/report.yaml",@collect_yaml_hash)
+      exit
+    end
+  end
+  
+  def execute_all_by_yaml
+    if $*.size==2 and $*[0] =~ /^(all)$/i and $*[1] =~ /^((\-y)|(\-yaml))$/i     
+      (puts "Please create workspace!";exit) if @test_case_path==nil
+      runHash = YAML.load(File.open(File.join(@root_path,"config","run.yaml")))
+      (puts "No data in run.yaml file" ; exit) if runHash == false
+      runHash.each{|key|
+        key.each{|k,v|
+          key.delete k if v.upcase == "N"
+        }
+      }
+      (puts "No project need to run" ; exit) if runHash.length==0
+      @collect_yaml_hash = Hash.new
+      @collect_rerun_yaml_hash = Hash.new
+      runHash.each{|key|
+        key.each{|project,v|
+          @all_project = [project]          
+          if File::exists?(File.join(@test_case_path,project,"#{project}.rb"))
+            delete_report_yaml_file
+            test_case_path = @test_case_path.to_s.gsub("/","\\")
+            command = "cd /d \"#{test_case_path}\\#{project}\" & ruby #{project}.rb"
+            system command            
+            collect_report_yaml_file{|temp_count,project|
+              @collect_yaml_hash[(temp_count+1).to_s]={
+              :project=>project,
+              :testclass=>"",
+              :testcase=>"",
+              :description=>"", 
+              :status=>"N/A",
+              :errMes=>"No case need to run"
+              }
+            }
+          else
+            collect_report_yaml_file{|temp_count,project|
+              @collect_yaml_hash[(temp_count+1).to_s]={
+              :project=>project,
+              :testclass=>"",
+              :testcase=>"",
+              :description=>"", 
+              :status=>"N/A",
+              :errMes=>"The project: #{project} is not exist in testcase"
+              }  
+            }
+          end
+        }
+      }      
+      delete_total_report_file
+      @collect_yaml_hash.update @collect_rerun_yaml_hash    
+      Report.new.putsReportFile("#{@report_path}/report.html","#{@report_path}/report.yaml",@collect_yaml_hash)     
+      exit
+    end
+  end
+  
+  def delete_report_yaml_file
+    @all_project.each{|project|
+      report_path_ = "#{@report_path}/#{project}/#{project}.yaml"
+      File.delete report_path_ if File::exists?(report_path_)
+    }    
+  end
+  
+  def delete_total_report_file
+    File.delete "#{@report_path}/report.html" if File::exists?("#{@report_path}/report.html")
+    File.delete "#{@report_path}/report.yaml" if File::exists?("#{@report_path}/report.yaml")
+  end
+  
+  def collect_report_yaml_file    
+    @all_project.each{|project|
+      report_path_ = "#{@report_path}/#{project}/#{project}.yaml" 
+      temp_count = @collect_yaml_hash.size
+      if File::exists?(report_path_)
+        temp_hash = YAML.load(file = File.open(report_path_))  
+        file.close
+        if temp_hash==false    
+          temp_hash = Hash.new
+          yield temp_count,project
+        end
+        temp_hash.each{|k,v|
+          unless k =~ /^re\./
+            @collect_yaml_hash[(temp_count+k.to_i).to_s] = v
+          else
+            @collect_rerun_yaml_hash[k[/\D+/]+(temp_count+k[/\d+/].to_i).to_s]=v
+          end
+        }
+      else
+        yield temp_count,project
+      end
+    }   
+  end
+      
+end  
+
+@rt = RunTime.new
+@rt.get_help
+@rt.arguments_check
+@rt.create_workspace
+@rt.create_project
+@rt.project_list
+@rt.execute_all
+@rt.execute_all_by_yaml
+@rt.execute_test_case
+ 

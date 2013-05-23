@@ -1,0 +1,8 @@
+--- 
+- common: 
+    private: y
+    smoking: y
+    description: ""
+- test_a_1: 
+    description: test for 123
+    inputValue: 123
